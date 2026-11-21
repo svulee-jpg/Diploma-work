@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Smart POS: окно бариста</title>
+<style>
+  :root { --bg:#f4efe9; --card:#fff; --ink:#2b2118; --mute:#7a6b5d; --brand:#6f4e37; --accent:#c98b4b;
+          --ok:#2e7d4f; --warn:#b3541e; --line:#e6ddd2; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:15px/1.45 -apple-system,"Segoe UI",Roboto,sans-serif; background:var(--bg); color:var(--ink); }
+  header { background:var(--brand); color:#fff; padding:14px 24px; display:flex; justify-content:space-between; align-items:center; }
+  header h1 { margin:0; font-size:18px; } header small { opacity:.8; }
+  main { display:grid; grid-template-columns:300px 1fr 340px; gap:16px; padding:16px 24px; max-width:1300px; margin:0 auto; }
+  @media (max-width:980px){ main { grid-template-columns:1fr; padding:12px 16px; } }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:16px; }
+  h2 { margin:0 0 10px; font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--mute); }
+  label { display:block; font-size:13px; color:var(--mute); margin:8px 0 4px; }
+  select, input[type=text] { width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:8px; font:inherit; }
+  button { font:inherit; border:0; border-radius:8px; padding:9px 14px; cursor:pointer; background:var(--brand); color:#fff; }
+  button.ghost { background:#efe6dc; color:var(--ink); } button:disabled { opacity:.5; cursor:default; }
+  .row { display:flex; gap:8px; margin-top:10px; flex-wrap:wrap; }
+  .hello { font-size:24px; font-weight:650; margin:0; }
+  .kv { display:flex; gap:18px; flex-wrap:wrap; margin:8px 0; color:var(--mute); } .kv b { color:var(--ink); }
+  .tag { display:inline-block; background:#f3e5d3; border-radius:999px; padding:2px 10px; font-size:13px; margin:2px 4px 2px 0; }
+  .status { padding:8px 12px; border-radius:8px; background:#efe6dc; font-size:14px; }
+  .status.ok { background:#e2f1e8; color:var(--ok); } .status.new { background:#fbeadb; color:var(--warn); }
+  .rec { border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin-bottom:8px; }
+  .rec.top { border-color:var(--accent); background:#fdf6ec; }
+  .rec .p { float:right; font-weight:700; color:var(--brand); }
+  .rec small { color:var(--mute); display:block; }
+  .script { background:#2b2118; color:#fff; border-radius:10px; padding:12px 14px; margin-top:10px; font-style:italic; }
+  .menu { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+  .menu button { background:#faf6f1; color:var(--ink); border:1px solid var(--line); text-align:left; padding:8px 10px; }
+  .menu button small { display:block; color:var(--mute); }
+  .menu button:hover { border-color:var(--accent); }
+  .line { display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px dashed var(--line); }
+  .total { font-size:20px; font-weight:700; display:flex; justify-content:space-between; margin-top:10px; }
+  .muted { color:var(--mute); } .hidden { display:none; }
+  .exp { color:var(--warn); font-weight:600; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Smart POS · окно бариста</h1>
+  <small id="engine">демо-режим (синтетические данные)</small>
+</header>
+<main>
+  <!-- 1. Камера / идентификация -->
+  <section>
+    <div class="card">
+      <h2>1 · Идентификация гостя</h2>
+      <div class="status" id="status">Ожидание гостя у кассы</div>
+      <label for="guest">Симуляция: кто подошёл к кассе</label>
+      <select id="guest"></select>
+      <label for="hour">Время суток</label>
+      <select id="hour">
+        <option value="">Сейчас (по часам)</option>
+        <option value="9">Утро (09:00)</option><option value="14">День (14:00)</option><option value="19">Вечер (19:00)</option>
+      </select>
+      <div class="row">
+        <button id="scan">Распознать лицо</button>
+        <button class="ghost" id="stranger">Новый гость</button>
+      </div>
+      <p class="muted" style="font-size:13px">В прототипе камера заменена симуляцией эмбеддингов; настоящий движок (InsightFace) подключается переменной окружения.</p>
+    </div>
+    <div class="card hidden" id="coldstart">
+      <h2>Холодный старт · новый гость</h2>
+      <p style="margin-top:0">«Оформить бонусную карту по лицу за 5 секунд и сразу начислить <b id="wb">200</b> бонусов?»</p>
+      <label>Имя</label><input type="text" id="regname" placeholder="Имя гостя">
+      <label>Телефон</label><input type="text" id="regphone" placeholder="+7 7xx xxx xx xx">
+      <label style="display:flex;gap:8px;align-items:flex-start;color:var(--ink)">
+        <input type="checkbox" id="consent" style="margin-top:3px">
+        <span>Гость дал согласие на обработку биометрических данных (вектор лица, без хранения фото)</span>
+      </label>
+      <div class="row"><button id="register">Оформить карту</button></div>
+    </div>
+  </section>
+
+  <!-- 2. Карточка и подсказка -->
+  <section>
+    <div class="card" id="profile">
+      <h2>2 · Карточка гостя</h2>
+      <p class="muted" id="noprofile">Нажмите «Распознать лицо».</p>
+      <div id="profilebody" class="hidden">
+        <p class="hello" id="pname"></p>
+        <div class="kv"><span>Визит: <b id="pvisit"></b></span><span>Бонусы: <b id="pbonus"></b></span>
+          <span>Любимый заказ: <b id="pfav"></b></span></div>
+        <div id="pprefs"></div>
+        <div class="row"><button class="ghost" id="usual">Как обычно</button>
+          <button class="ghost" id="forget">Отозвать согласие (удалить вектор лица)</button></div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>3 · Подсказка ИИ-ассистента</h2>
+      <div id="recs"><p class="muted">Подсказки появятся после идентификации гостя или выбора напитка.</p></div>
+      <div class="script hidden" id="script"></div>
+    </div>
+  </section>
+
+  <!-- 3. Заказ -->
+  <section>
+    <div class="card">
+      <h2>Меню</h2>
+      <div class="menu" id="menu"></div>
+    </div>
+    <div class="card">
+      <h2>Заказ</h2>
+      <div id="cart"><p class="muted">Пусто</p></div>
+      <label id="redeemrow" class="hidden" style="display:none;color:var(--ink)">
+        <input type="checkbox" id="redeem"> Списать бонусы (<span id="redeemmax">0</span>)
+      </label>
+      <div class="total"><span>К оплате</span><span id="total">0 ₸</span></div>
+      <div class="row"><button id="pay">Оплатить в один клик</button></div>
+      <p id="receipt" class="muted"></p>
+    </div>
+  </section>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const money = n => n.toLocaleString("ru-RU") + " ₸";
+let products = [], customer = null, scanId = null, cart = {}, shown = [];
+
+async function api(path, opts) {
+  const r = await fetch(path, opts && {headers:{"Content-Type":"application/json"}, ...opts});
+  if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
+  return r.json();
+}
+const post = (p, b) => api(p, {method:"POST", body:JSON.stringify(b)});
+
+async function init() {
+  const st = await api("/api/state");
+  products = st.products; $("wb").textContent = st.welcome_bonus;
+  $("engine").textContent = "движок: " + st.engine + " · демо на синтетических данных";
+  $("menu").innerHTML = products.map(p => `<button data-id="${p.id}">${p.name}<small>${money(p.price)}${
+    p.category==="food" ? " · осталось " + p.stock : ""}</small></button>`).join("");
+  $("menu").onclick = e => { const b = e.target.closest("button"); if (b) add(+b.dataset.id); };
+  const cs = await api("/api/customers");
+  $("guest").innerHTML = cs.map(c => `<option value="${c.id}">${c.name} (#${c.id})</option>`).join("");
+}
+
+function setStatus(text, cls="") { $("status").textContent = text; $("status").className = "status " + cls; }
+
+async function doScan(body) {
+  cart = {}; render();
+  const r = await post("/api/simulate-scan", body);
+  if (r.matched) {
+    customer = r.customer; scanId = null; $("coldstart").classList.add("hidden");
+    setStatus(`Гость распознан · сходство ${r.score}`, "ok"); showProfile();
+    if (customer.favorite_drink) add(customer.favorite_drink.product_id, true);
+    refreshRecs();
+  } else {
+    customer = null; scanId = r.scan_id; $("profilebody").classList.add("hidden"); $("noprofile").classList.remove("hidden");
+    $("noprofile").textContent = "Гость не найден в базе.";
+    setStatus("Новый гость: предложите бонусную карту", "new"); $("coldstart").classList.remove("hidden");
+    $("recs").innerHTML = '<p class="muted">Персональных подсказок пока нет.</p>'; $("script").classList.add("hidden");
+    redeemUI();
+  }
+}
+
+function showProfile() {
+  $("noprofile").classList.add("hidden"); $("profilebody").classList.remove("hidden");
+  $("pname").textContent = customer.name;
+  $("pvisit").textContent = (customer.visits + 1) + "-й";
+  $("pbonus").textContent = customer.bonus;
+  const f = customer.favorite_drink;
+  $("pfav").textContent = f ? `${f.name} (в ${Math.round(f.share*100)}% визитов)` : "нет данных";
+  $("pprefs").innerHTML = customer.prefs.map(p => `<span class="tag">${p}</span>`).join("");
+  redeemUI();
+}
+
+function redeemUI() {
+  const show = customer && customer.bonus > 0;
+  $("redeemrow").style.display = show ? "block" : "none";
+  if (show) $("redeemmax").textContent = customer.bonus;
+}
+
+function cartDrink() { return Object.keys(cart).map(Number).find(id => products.find(p => p.id===id).category==="drink"); }
+
+async function refreshRecs() {
+  const hour = $("hour").value;
+  const r = await post("/api/recommend", {customer_id: customer ? customer.id : null, drink_id: cartDrink() ?? null,
+                                          hour: hour ? +hour : null});
+  const incart = new Set(Object.keys(cart).map(Number));
+  const list = r.recommendations.filter(x => !incart.has(x.product_id));
+  shown = list.map(x => ({product_id:x.product_id, probability:x.probability}));
+  $("recs").innerHTML = list.length ? list.map((x,i) => `
+    <div class="rec ${i===0?"top":""}"><span class="p">${Math.round(x.probability*100)}%</span>
+      <b>${x.name}</b>${x.expiring ? ' <span class="exp">· истекает срок</span>' : ""}
+      <small>${x.reasons.join("; ") || "—"}</small>
+      <div class="row" style="margin-top:6px"><button class="ghost" onclick="add(${x.product_id})">Добавить</button></div></div>`).join("")
+    : '<p class="muted">Нет подходящих позиций.</p>';
+  $("script").classList.toggle("hidden", !r.script || !list.length);
+  $("script").textContent = r.script ? "«" + r.script + "»" : "";
+}
+
+function add(id, silent) {
+  const p = products.find(x => x.id===id);
+  if (p.category==="drink") for (const k of Object.keys(cart)) if (products.find(x=>x.id===+k).category==="drink") delete cart[k];
+  cart[id] = (cart[id]||0) + 1; render(); if (!silent) refreshRecs();
+}
+function render() {
+  const ids = Object.keys(cart).map(Number);
+  $("cart").innerHTML = ids.length ? ids.map(id => { const p = products.find(x=>x.id===id);
+    return `<div class="line"><span>${p.name} × ${cart[id]}</span><span>${money(p.price*cart[id])}</span></div>`; }).join("")
+    : '<p class="muted">Пусто</p>';
+  const gross = ids.reduce((s,id)=>s+products.find(x=>x.id===id).price*cart[id],0);
+  const red = ($("redeem").checked && customer) ? Math.min(customer.bonus, gross) : 0;
+  $("total").textContent = money(gross - red);
+}
+$("redeem").onchange = render;
+
+$("scan").onclick = () => doScan({customer_id:+$("guest").value}).catch(e => setStatus(e.message,"new"));
+$("stranger").onclick = () => doScan({}).catch(e => setStatus(e.message,"new"));
+$("hour").onchange = () => refreshRecs();
+$("usual").onclick = () => { if (customer?.favorite_drink) { add(customer.favorite_drink.product_id); } };
+$("forget").onclick = async () => {
+  await api(`/api/customers/${customer.id}/biometrics`, {method:"DELETE"});
+  setStatus("Согласие отозвано: вектор лица удалён", "new");
+};
+$("register").onclick = async () => {
+  try {
+    customer = await post("/api/register", {scan_id:scanId, name:$("regname").value, phone:$("regphone").value, consent:$("consent").checked});
+    $("coldstart").classList.add("hidden"); setStatus("Карта оформлена, начислено приветственных бонусов", "ok");
+    showProfile(); refreshRecs();
+    const cs = await api("/api/customers"); $("guest").innerHTML = cs.map(c => `<option value="${c.id}">${c.name} (#${c.id})</option>`).join("");
+  } catch (e) { setStatus(e.message, "new"); }
+};
+$("pay").onclick = async () => {
+  const items = Object.entries(cart).map(([id,qty]) => ({product_id:+id, qty}));
+  if (!items.length) return;
+  const gross = items.reduce((s,i)=>s+products.find(x=>x.id===i.product_id).price*i.qty,0);
+  try {
+    const r = await post("/api/checkout", {customer_id: customer?.id ?? null, items, shown,
+      redeem: ($("redeem").checked && customer) ? Math.min(customer.bonus, gross) : 0});
+    $("receipt").textContent = `Оплачено ${money(r.to_pay)}` + (r.customer ? ` · списано ${r.redeemed}, начислено ${r.earned}, баланс ${r.customer.bonus}` : "");
+    if (r.customer) { customer = r.customer; showProfile(); }
+    cart = {}; $("redeem").checked = false; render();
+    products = (await api("/api/state")).products;
+  } catch (e) { $("receipt").textContent = e.message; }
+};
+init();
+</script>
+</body>
+</html>

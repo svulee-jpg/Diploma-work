@@ -1,0 +1,14 @@
+fastapi
+uvicorn[standard]
+pandas
+numpy
+scikit-learn
+faiss-cpu
+opencv-python-headless
+python-multipart
+# Реальное распознавание лиц (опционально, SMARTPOS_FACE_ENGINE=insightface):
+insightface
+onnxruntime
+# Тесты
+pytest
+httpx
