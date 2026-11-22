@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Smart POS · киоск</title>
+<style>
+  :root { --bg:#e6cdac; --card:#fff8ea; --ink:#1a1411; --mute:#6b5a4b; --brand:#100f0e; --accent:#8a553a;
+          --sand:#b9926c; --soft:#efdcbd; --cream:#f3e3c3; --ok:#2e7d4f; --line:#dcc6a3; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { height:100%; }
+  body { margin:0; font:17px/1.4 -apple-system,"Segoe UI",Roboto,sans-serif; color:var(--ink); user-select:none;
+         background:var(--bg) url(/static/leopard.jpg) center/cover fixed; overflow:hidden; }
+  .hidden { display:none !important; }
+  button { font:inherit; border:0; cursor:pointer; border-radius:14px; background:var(--brand); color:var(--cream); padding:14px 22px; }
+  button:active { transform:scale(.97); } button.ghost { background:var(--soft); color:var(--ink); }
+  button.big { font-size:22px; padding:18px 30px; border-radius:18px; }
+  .brand { position:fixed; top:0; left:0; right:0; background:var(--brand); color:var(--cream); padding:12px 26px;
+           display:flex; align-items:center; justify-content:space-between; z-index:5; }
+  .brand b { font-size:22px; letter-spacing:.04em; } .brand small { opacity:.7; }
+  .brand::after { content:""; position:absolute; left:0; right:0; bottom:-12px; height:12px; border-top:2px solid var(--sand);
+                  background:var(--bg) url(/static/leopard.jpg) center 30%/cover; }
+  .screen { position:absolute; inset:64px 0 0 0; padding:22px 26px; }
+
+  /* idle */
+  #idle { display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; gap:18px; }
+  .lens { width:300px; height:300px; border-radius:50%; overflow:hidden; border:8px solid var(--brand); background:#000;
+          box-shadow:0 0 0 6px var(--sand), 0 10px 30px rgba(0,0,0,.4); position:relative; }
+  .lens video { width:100%; height:100%; object-fit:cover; transform:scaleX(-1); }
+  .lens.pulse { animation:pulse 2s infinite; }
+  @keyframes pulse { 50% { box-shadow:0 0 0 18px rgba(185,146,108,.35), 0 10px 30px rgba(0,0,0,.4); } }
+  .lens .ph { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:90px; background:var(--soft); }
+  #idle h1 { margin:0; font-size:42px; background:rgba(255,248,234,.92); padding:10px 26px; border-radius:18px; }
+  #idle p { margin:0; background:rgba(255,248,234,.92); padding:8px 20px; border-radius:12px; color:var(--mute); }
+
+  /* main */
+  #main { display:grid; grid-template-columns:1fr 360px; gap:18px; }
+  .left { overflow-y:auto; padding-right:6px; } .left::-webkit-scrollbar { width:0; }
+  .hero { background:var(--brand); color:var(--cream); border-radius:20px; padding:18px 24px; margin-bottom:14px; border-left:8px solid var(--sand); }
+  .hero h2 { margin:0; font-size:34px; } .hero p { margin:4px 0 0; opacity:.85; }
+  .chips { margin-top:10px; } .chip { display:inline-block; background:rgba(243,227,195,.16); border-radius:999px; padding:3px 12px; margin:2px 6px 2px 0; font-size:14px; }
+  h3 { margin:14px 0 8px; background:rgba(255,248,234,.92); display:inline-block; padding:4px 14px; border-radius:10px; font-size:18px; }
+  .row { display:grid; grid-template-columns:repeat(auto-fill,minmax(210px,1fr)); gap:12px; }
+  .tile { background:var(--card); border:2px solid var(--line); border-radius:18px; padding:14px 16px; position:relative; cursor:pointer; min-height:112px;
+          display:flex; flex-direction:column; justify-content:space-between; box-shadow:0 3px 10px rgba(16,15,14,.18); }
+  .tile.usual { border-color:var(--accent); background:#fbefd7; }
+  .tile b { font-size:19px; } .tile .why { font-size:13px; color:var(--accent); font-weight:600; }
+  .tile .pr { font-size:19px; font-weight:700; } .tile s { color:var(--mute); font-weight:400; font-size:15px; margin-right:6px; }
+  .badge { position:absolute; top:-9px; right:12px; background:var(--accent); color:#fff; border-radius:999px; padding:2px 10px; font-size:12px; font-weight:700; }
+  .tabs { display:flex; gap:8px; margin:14px 0 8px; } .tabs button { background:rgba(255,248,234,.92); color:var(--ink); } .tabs button.on { background:var(--brand); color:var(--cream); }
+
+  /* cart */
+  .cart { background:var(--card); border-radius:20px; padding:18px; display:flex; flex-direction:column; box-shadow:0 3px 14px rgba(16,15,14,.25); max-height:100%; }
+  .cart h3 { margin:0 0 8px; background:none; padding:0; }
+  .lines { flex:1; overflow-y:auto; }
+  .ln { display:flex; align-items:center; gap:8px; padding:8px 0; border-bottom:1px dashed var(--line); }
+  .ln span.n { flex:1; } .ln .q { display:flex; align-items:center; gap:8px; }
+  .ln .q button { padding:4px 12px; border-radius:10px; background:var(--soft); color:var(--ink); }
+  .tot { display:flex; justify-content:space-between; font-size:26px; font-weight:800; margin:12px 0 8px; }
+  .bonus { font-size:15px; color:var(--mute); margin-bottom:8px; }
+
+  /* modal */
+  .modal { position:fixed; inset:0; background:rgba(16,15,14,.7); z-index:20; display:flex; align-items:center; justify-content:center; padding:20px; }
+  .box { background:var(--card); border-radius:24px; padding:28px 32px; max-width:560px; width:100%; text-align:center; border-top:10px solid var(--accent); }
+  .box h2 { margin:0 0 8px; font-size:30px; } .box p { color:var(--mute); }
+  .box .btns { display:flex; gap:12px; justify-content:center; flex-wrap:wrap; margin-top:18px; }
+  .box input[type=text] { width:100%; font:inherit; font-size:20px; padding:12px 14px; border-radius:12px; border:2px solid var(--line); margin:6px 0; }
+  .box label.c { display:flex; gap:10px; text-align:left; font-size:14px; color:var(--ink); margin-top:8px; }
+  .spin { width:54px; height:54px; border-radius:50%; border:6px solid var(--soft); border-top-color:var(--accent); animation:sp 1s linear infinite; margin:18px auto; }
+  @keyframes sp { to { transform:rotate(360deg); } }
+  .qr { width:170px; height:170px; margin:10px auto; background:
+        repeating-conic-gradient(var(--brand) 0 25%, #fff 0 50%) 0 0/34px 34px; border:10px solid #fff; border-radius:8px; outline:2px solid var(--brand); }
+  .ok { color:var(--ok); }
+
+  /* demo panel */
+  #demo { position:fixed; left:10px; bottom:10px; z-index:30; background:rgba(16,15,14,.86); color:var(--cream); border-radius:14px; padding:10px 12px; font-size:13px; max-width:300px; }
+  #demo select { width:100%; margin:3px 0; padding:5px; border-radius:8px; font:inherit; font-size:13px; }
+  #demo button { padding:6px 10px; font-size:13px; margin:3px 3px 0 0; }
+  #priv { position:fixed; bottom:8px; right:14px; font-size:12px; color:#3a2c20; background:rgba(255,248,234,.85); border-radius:8px; padding:3px 10px; z-index:4; }
+</style>
+</head>
+<body>
+<div class="brand"><b>☕ ESPRESSO DAY</b><small id="clock">киоск самообслуживания · демо</small></div>
+
+<!-- 1. ожидание -->
+<section class="screen" id="idle">
+  <div class="lens pulse"><video id="cam" autoplay playsinline muted class="hidden"></video><div class="ph" id="ph">🙂</div></div>
+  <h1>Подойдите ближе: мы вас узнаем</h1>
+  <p>Камера узнаёт только зарегистрированных гостей. Кадры не сохраняются.</p>
+  <button class="big ghost" id="asGuest">Заказать без распознавания</button>
+</section>
+
+<!-- 2. заказ -->
+<section class="screen hidden" id="main">
+  <div class="left">
+    <div class="hero"><h2 id="hello"></h2><p id="sub"></p><div class="chips" id="chips"></div></div>
+    <h3>Для вас сегодня</h3>
+    <div class="row" id="sugg"></div>
+    <div class="tabs"><button id="tabD" class="on">Напитки</button><button id="tabF" class="ghost">Выпечка и десерты</button></div>
+    <div class="row" id="menu"></div>
+    <div style="height:30px"></div>
+  </div>
+  <aside class="cart">
+    <h3>Ваш заказ</h3>
+    <div class="lines" id="lines"></div>
+    <div class="bonus" id="bonusbox"></div>
+    <div class="tot"><span>Итого</span><span id="total">0 ₸</span></div>
+    <button class="big" id="pay">Оплатить</button>
+    <button class="ghost" id="cancel" style="margin-top:8px">Отмена</button>
+  </aside>
+</section>
+
+<div id="modal" class="modal hidden"><div class="box" id="box"></div></div>
+
+<div id="demo" class="hidden">
+  <b>Демо-панель</b>
+  <select id="dGuest"></select>
+  <button id="dScan">Гость подошёл</button><button id="dStranger" class="ghost">Незнакомец</button>
+  <select id="dDate">
+    <option value="">Дата: сегодня</option>
+    <option value="2026-07-15">15 июля (лето)</option>
+    <option value="2026-12-14">14 декабря (скоро День Независимости)</option>
+    <option value="2026-12-30">30 декабря (скоро Новый год)</option>
+    <option value="2027-03-19">19 марта (скоро Наурыз)</option>
+  </select>
+  <select id="dHour"><option value="">Время: сейчас</option><option value="9">Утро 09:00</option><option value="14">День 14:00</option><option value="19">Вечер 19:00</option></select>
+</div>
+<div id="priv">🔒 Хранится только числовой вектор лица, не фото. Согласие можно отозвать.</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const money = n => n.toLocaleString("ru-RU") + " ₸";
+const st = {screen:"idle", customer:null, cart:{}, products:[], ctx:null, tab:"drink", engine:null, busy:false, cool:false,
+            upsold:false, shown:[], idleTimer:null, scanning:false};
+
+async function api(path, body) {
+  const r = await fetch(path, body === undefined ? {} : {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)});
+  if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
+  return r.json();
+}
+const demo = () => ({date: $("dDate").value || null, hour: $("dHour").value ? +$("dHour").value : null});
+const prod = id => st.products.find(p => p.id === id);
+
+/* ---------- экраны ---------- */
+function show(name) { st.screen = name; $("idle").classList.toggle("hidden", name !== "idle"); $("main").classList.toggle("hidden", name !== "main"); }
+function modal(html) { $("box").innerHTML = html; $("modal").classList.remove("hidden"); }
+function closeModal() { $("modal").classList.add("hidden"); }
+function touch() { clearTimeout(st.idleTimer); if (st.screen === "main") st.idleTimer = setTimeout(reset, 60000); }
+document.addEventListener("click", touch);
+
+function reset() {
+  closeModal(); st.customer = null; st.cart = {}; st.upsold = false; st.shown = []; show("idle");
+  st.cool = true; setTimeout(() => st.cool = false, 4000);
+}
+
+/* ---------- старт сессии ---------- */
+async function startSession(customer) {
+  st.customer = customer; st.cart = {}; st.upsold = false; st.shown = []; st.tab = "drink";
+  closeModal(); show("main"); await refresh(); touch();
+}
+async function refresh() {
+  const d = demo();
+  const [m, s] = await Promise.all([
+    api(`/api/kiosk/menu?${new URLSearchParams(Object.fromEntries(Object.entries(d).filter(([,v]) => v !== null)))}`),
+    api("/api/kiosk/suggest", {customer_id: st.customer?.id ?? null, ...d})]);
+  st.products = m.products; st.ctx = m.context; st.sugg = s;
+  renderHero(); renderSugg(); renderMenu(); renderCart();
+}
+function renderHero() {
+  const c = st.ctx, g = st.sugg.greeting;
+  $("hello").textContent = g.hello; $("sub").textContent = g.sub;
+  const chips = [`${c.weekday_ru}`, c.daypart_ru, c.season_ru];
+  if (c.holiday) chips.push("🎉 " + c.holiday.name);
+  if (st.customer) chips.push(`⭐ ${st.customer.bonus} бонусов`);
+  $("chips").innerHTML = chips.map(x => `<span class="chip">${x}</span>`).join("");
+}
+function priceHtml(p) { return (p.old_price ? `<s>${p.old_price}</s>` : "") + money(p.price); }
+function renderSugg() {
+  $("sugg").innerHTML = st.sugg.drinks.map(d => `
+    <div class="tile ${d.is_usual ? "usual" : ""}" onclick="add(${d.product_id})">
+      ${d.badge ? `<span class="badge">${d.badge}</span>` : ""}
+      <div><span class="why">${d.reason}</span><br><b>${d.name}</b></div><div class="pr">${priceHtml(d)}</div></div>`).join("");
+}
+function renderMenu() {
+  $("tabD").className = st.tab === "drink" ? "on" : "ghost"; $("tabF").className = st.tab === "food" ? "on" : "ghost";
+  $("menu").innerHTML = st.products.filter(p => p.category === st.tab).map(p => `
+    <div class="tile" onclick="add(${p.id})">${p.badge ? `<span class="badge">${p.badge}</span>` : ""}
+      <b>${p.name}</b><div class="pr">${priceHtml(p)}</div></div>`).join("");
+}
+$("tabD").onclick = () => { st.tab = "drink"; renderMenu(); };
+$("tabF").onclick = () => { st.tab = "food"; renderMenu(); };
+
+/* ---------- корзина ---------- */
+function add(id) { st.cart[id] = (st.cart[id] || 0) + 1; renderCart(); }
+function chg(id, d) { st.cart[id] = (st.cart[id] || 0) + d; if (st.cart[id] <= 0) delete st.cart[id]; renderCart(); }
+function sum() { return Object.entries(st.cart).reduce((s, [id, q]) => s + (prod(+id)?.price || 0) * q, 0); }
+function renderCart() {
+  const ids = Object.keys(st.cart).map(Number);
+  $("lines").innerHTML = ids.length ? ids.map(id => `<div class="ln"><span class="n">${prod(id).name}</span>
+    <span class="q"><button onclick="chg(${id},-1)">−</button>${st.cart[id]}<button onclick="chg(${id},1)">+</button></span>
+    <b>${money(prod(id).price * st.cart[id])}</b></div>`).join("") : '<p style="color:var(--mute)">Выберите напиток слева</p>';
+  const t = sum(); $("total").textContent = money(t); $("pay").disabled = !ids.length; $("pay").style.opacity = ids.length ? 1 : .4;
+  $("bonusbox").innerHTML = st.customer ? `Бонусы: ${st.customer.bonus}. После оплаты вернётся ${Math.floor(t * 0.05)}.` : "Без карты бонусы не копятся.";
+}
+$("cancel").onclick = reset;
+
+/* ---------- допродажа и оплата ---------- */
+$("pay").onclick = async () => {
+  const drink = Object.keys(st.cart).map(Number).find(id => prod(id)?.category === "drink");
+  if (!st.upsold && drink) {
+    st.upsold = true;
+    try {
+      const r = await api("/api/recommend", {customer_id: st.customer?.id ?? null, drink_id: drink, hour: st.ctx.hour});
+      const top = r.recommendations.find(x => !st.cart[x.product_id] && prod(x.product_id));
+      if (top) {
+        const p = prod(top.product_id); st.shown = [{product_id: top.product_id, probability: top.probability}];
+        modal(`<h2>К ${prod(drink).name.toLowerCase()} часто берут</h2><p style="font-size:24px;color:var(--ink);margin:6px 0">${p.name}</p>
+          <p>${top.reasons[0] ? toGuest(top.reasons[0]) : ""}</p>
+          <div style="font-size:26px;font-weight:800">${priceHtml(p)}</div>
+          <div class="btns"><button class="big" id="upY">Добавить</button><button class="big ghost" id="upN">Нет, спасибо</button></div>`);
+        $("upY").onclick = () => { add(top.product_id); closeModal(); payModal(); };
+        $("upN").onclick = () => { closeModal(); payModal(); };
+        return;
+      }
+    } catch (e) { /* без допродажи */ }
+  }
+  payModal();
+};
+function toGuest(t) {  // причины сформулированы для бариста, киоск обращается к гостю напрямую
+  t = t.replace("гость брал это", "Вы брали это").replace("чаще берёт", "Вы чаще берёте")
+       .replace("с этим напитком часто берут", "С этим напитком часто берут").replace("новый гость: ", "");
+  return t[0].toUpperCase() + t.slice(1);
+}
+function payModal() {
+  const useBonus = st.customer && st.customer.bonus > 0;
+  modal(`<h2>К оплате: ${money(sum())}</h2>
+    ${useBonus ? `<label class="c" style="font-size:18px"><input type="checkbox" id="redeem"> Списать бонусы (до ${Math.min(st.customer.bonus, sum())} ₸)</label>` : ""}
+    <p>Демо-оплата, реальные платежи не проводятся.</p>
+    <div class="btns"><button class="big" data-m="kaspi">Kaspi QR</button><button class="big" data-m="card">Банковская карта</button>
+    <button class="big ghost" id="back">Назад</button></div>`);
+  $("back").onclick = closeModal;
+  document.querySelectorAll("[data-m]").forEach(b => b.onclick = () => doPay(b.dataset.m));
+}
+async function doPay(method) {
+  const redeem = $("redeem")?.checked ? Math.min(st.customer.bonus, sum()) : 0;
+  modal(`<h2>${method === "kaspi" ? "Отсканируйте QR в Kaspi.kz" : "Приложите карту"}</h2>${method === "kaspi" ? '<div class="qr"></div>' : ""}<div class="spin"></div><p>Ожидаем оплату…</p>`);
+  await new Promise(r => setTimeout(r, 2200));
+  try {
+    const items = Object.entries(st.cart).map(([id, qty]) => ({product_id: +id, qty}));
+    const r = await api("/api/checkout", {customer_id: st.customer?.id ?? null, items, redeem, shown: st.shown, apply_promos: true, ...demo()});
+    modal(`<h2 class="ok">✔ Оплачено</h2><p style="font-size:22px;color:var(--ink)">Заказ №${r.order_id}${st.customer ? ", " + st.customer.name : ""}</p>
+      <p>Бариста уже готовит. Сумма: ${money(r.to_pay)}${r.customer ? `<br>Начислено бонусов: ${r.earned} · баланс ${r.customer.bonus}` : ""}</p>
+      <div class="btns"><button class="big" id="fin">Готово</button></div>`);
+    $("fin").onclick = reset; setTimeout(() => { if (st.screen === "main") reset(); }, 10000);
+  } catch (e) { modal(`<h2>Ошибка оплаты</h2><p>${e.message}</p><div class="btns"><button class="big" onclick="closeModal()">Закрыть</button></div>`); }
+}
+
+/* ---------- гость и регистрация ---------- */
+function offerCard(scanId) {
+  st.cool = true;
+  modal(`<h2>Здравствуйте!</h2><p style="font-size:20px;color:var(--ink)">Мы вас ещё не знаем. Оформить бонусную карту по лицу за 5 секунд и сразу получить <b>200 бонусов</b>?</p>
+    <div class="btns"><button class="big" id="yes">Оформить карту</button><button class="big ghost" id="no">Продолжить без карты</button></div>`);
+  $("no").onclick = () => startSession(null);
+  $("yes").onclick = () => registerForm(scanId);
+}
+function registerForm(scanId) {
+  modal(`<h2>Бонусная карта по лицу</h2>
+    <input type="text" id="rn" placeholder="Ваше имя"><input type="text" id="rp" placeholder="Телефон, +7 7XX XXX XX XX">
+    <label class="c"><input type="checkbox" id="rc"><span>Я согласна на обработку биометрических данных. Хранится только числовой вектор лица, не фотография. Согласие можно отозвать в любой момент, вектор будет удалён.</span></label>
+    <p id="rerr" style="color:#a2261d;margin:6px 0 0"></p>
+    <div class="btns"><button class="big" id="rok">Оформить</button><button class="big ghost" id="rno">Отмена</button></div>`);
+  $("rno").onclick = reset;
+  $("rok").onclick = async () => {
+    try { startSession(await api("/api/register", {scan_id: scanId, name: $("rn").value, phone: $("rp").value, consent: $("rc").checked})); }
+    catch (e) { $("rerr").textContent = e.message; }
+  };
+}
+$("asGuest").onclick = () => startSession(null);
+
+/* ---------- камера / симуляция ---------- */
+async function captureScan() {
+  const v = $("cam"); if (!v.videoWidth) throw new Error("camera not ready");
+  const c = document.createElement("canvas"); c.width = v.videoWidth; c.height = v.videoHeight; c.getContext("2d").drawImage(v, 0, 0);
+  const blob = await new Promise(res => c.toBlob(res, "image/jpeg", 0.9));
+  const fd = new FormData(); fd.append("image", blob, "f.jpg");
+  const r = await fetch("/api/scan", {method:"POST", body:fd});
+  if (!r.ok) throw new Error("no face"); return r.json();
+}
+function onScan(r) { r.matched ? startSession(r.customer) : offerCard(r.scan_id); }
+setInterval(async () => {
+  if (st.engine !== "insightface" || st.screen !== "idle" || st.cool || st.scanning || !$("modal").classList.contains("hidden")) return;
+  st.scanning = true;
+  try { onScan(await captureScan()); } catch (e) { /* лица нет в кадре: ждём */ } finally { st.scanning = false; }
+}, 1500);
+
+$("dScan").onclick = async () => onScan(await api("/api/simulate-scan", {customer_id: +$("dGuest").value}));
+$("dStranger").onclick = async () => onScan(await api("/api/simulate-scan", {}));
+["dDate", "dHour"].forEach(id => $(id).onchange = () => { if (st.screen === "main") refresh(); });
+
+async function init() {
+  const s = await api("/api/state"); st.engine = s.engine;
+  if (s.engine === "insightface") {
+    try {
+      $("cam").srcObject = await navigator.mediaDevices.getUserMedia({video:{width:640, height:480}, audio:false});
+      $("cam").classList.remove("hidden"); $("ph").classList.add("hidden");
+    } catch (e) { $("idle").querySelector("p").textContent = "Нет доступа к камере: " + e.message; }
+  }
+  if (s.engine === "simulated" || new URLSearchParams(location.search).has("demo")) {
+    $("demo").classList.remove("hidden");
+    $("dGuest").innerHTML = (await api("/api/customers")).map(c => `<option value="${c.id}">${c.name} (#${c.id})</option>`).join("");
+  }
+  setInterval(() => $("clock").textContent = new Date().toLocaleTimeString("ru-RU", {hour:"2-digit", minute:"2-digit"}) + " · киоск самообслуживания · демо", 15000);
+}
+init();
+</script>
+</body>
+</html>

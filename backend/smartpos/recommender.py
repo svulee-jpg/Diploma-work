@@ -51,6 +51,7 @@ class Recommender:
     def __init__(self) -> None:
         self.model: LogisticRegression | None = None
         self.food_ids: list[int] = []
+        self.p_drink: dict[int, float] = {}
         self.p_food = defaultdict(float)
         self.p_food_drink: dict[tuple[int, int], float] = {}
         self.p_food_dp: dict[tuple[str, int], float] = {}
@@ -70,6 +71,7 @@ class Recommender:
                 c_dp_food[(dp, f)] += 1
                 if o.drink:
                     c_pair[(o.drink, f)] += 1
+        self.p_drink = {d: c / n for d, c in c_drink.items()}  # популярность напитков по сети
         self.p_food = defaultdict(float, {f: c / n for f, c in c_food.items()})
         self.p_food_drink = {k: v / max(c_drink[k[0]], 1) for k, v in c_pair.items()}
         self.p_food_dp = {k: v / max(c_dp[k[0]], 1) for k, v in c_dp_food.items()}

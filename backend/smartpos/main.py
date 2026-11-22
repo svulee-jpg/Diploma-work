@@ -11,6 +11,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from . import context as ctxmod
 from .db import DB_PATH, connect
 from .faces import FaceIndex, SimulatedEngine, make_engine
 from .recommender import Order, Recommender, daypart, load_orders
@@ -30,7 +31,19 @@ class State:
 S = State()
 
 
+def _ensure_seasonal_products() -> None:
+    """Сезонные напитки добавляются в уже существующую БД, не затрагивая историю чеков."""
+    con = connect()
+    con.executemany(
+        "INSERT OR IGNORE INTO products (id,name,category,price,stock,hours_left) VALUES (?,?,?,?,?,NULL)",
+        [(9, "Тыквенный латте", "drink", 1800, 999), (10, "Новогодний раф", "drink", 1900, 999)],
+    )
+    con.commit()
+    con.close()
+
+
 def _train() -> None:
+    _ensure_seasonal_products()
     con = connect()
     food = [r["id"] for r in con.execute("SELECT id FROM products WHERE category='food'")]
     S.rec.fit(load_orders(con), food)
@@ -159,6 +172,40 @@ def recommend(body: RecRequest):
     return {"drink_id": drink, "daypart": daypart(hour), "recommendations": recs, "script": script}
 
 
+class KioskReq(BaseModel):
+    customer_id: int | None = None
+    date: str | None = None   # для демо: подменить дату (YYYY-MM-DD)
+    hour: int | None = None   # для демо: подменить час
+
+
+@app.get("/api/kiosk/menu")
+def kiosk_menu(date: str | None = None, hour: int | None = None):
+    """Меню киоска с учётом сезона, времени суток и акций."""
+    con = connect()
+    ctx = ctxmod.make_context(date, hour)
+    items = []
+    for p in _products(con).values():
+        if not ctxmod.in_season(p["id"], ctx) or (p["category"] == "food" and p["stock"] <= 0):
+            continue
+        items.append({"id": p["id"], "name": p["name"], "category": p["category"], "stock": p["stock"],
+                      **ctxmod.price_info(p, ctx)})
+    return {"context": ctx, "products": items}
+
+
+@app.post("/api/kiosk/suggest")
+def kiosk_suggest(body: KioskReq):
+    """Приветствие и персональные подсказки напитков для гостя (или популярные для нового)."""
+    con = connect()
+    ctx = ctxmod.make_context(body.date, body.hour)
+    name = None
+    hist: list[Order] = []
+    if body.customer_id:
+        name = con.execute("SELECT name FROM customers WHERE id=?", (body.customer_id,)).fetchone()["name"]
+        hist = _history(con, body.customer_id)
+    drinks = ctxmod.suggest_drinks(hist, ctx, _products(con), S.rec.p_drink)
+    return {"context": ctx, "greeting": ctxmod.greeting(name, ctx), "drinks": drinks}
+
+
 class Register(BaseModel):
     scan_id: str
     name: str
@@ -210,6 +257,9 @@ class Checkout(BaseModel):
     items: list[Item]
     redeem: int = 0
     shown: list[ShownRec] = []
+    apply_promos: bool = False   # киоск: цены с акциями (серверный пересчёт, клиенту не доверяем)
+    date: str | None = None
+    hour: int | None = None
 
 
 @app.post("/api/checkout")
@@ -218,7 +268,11 @@ def checkout(body: Checkout):
         raise HTTPException(400, "Пустой заказ")
     con = connect()
     prods = _products(con)
-    gross = sum(prods[i.product_id]["price"] * i.qty for i in body.items)
+    if body.apply_promos:
+        ctx = ctxmod.make_context(body.date, body.hour)
+        gross = sum(ctxmod.price_info(prods[i.product_id], ctx)["price"] * i.qty for i in body.items)
+    else:
+        gross = sum(prods[i.product_id]["price"] * i.qty for i in body.items)
     redeem = 0
     if body.customer_id and body.redeem > 0:
         bonus = con.execute("SELECT bonus FROM customers WHERE id=?", (body.customer_id,)).fetchone()["bonus"]
@@ -253,5 +307,12 @@ if FRONTEND.exists():
     app.mount("/static", StaticFiles(directory=FRONTEND), name="static")
 
     @app.get("/")
-    def index():
+    @app.get("/kiosk")
+    def kiosk():
+        """Экран для гостя (планшет у стойки)."""
+        return FileResponse(FRONTEND / "kiosk.html")
+
+    @app.get("/barista")
+    def barista():
+        """Экран для персонала."""
         return FileResponse(FRONTEND / "index.html")
