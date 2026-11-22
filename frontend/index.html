@@ -51,8 +51,13 @@
     <div class="card">
       <h2>1 · Идентификация гостя</h2>
       <div class="status" id="status">Ожидание гостя у кассы</div>
-      <label for="guest">Симуляция: кто подошёл к кассе</label>
-      <select id="guest"></select>
+      <div id="camera" class="hidden">
+        <video id="cam" autoplay playsinline muted style="width:100%;border-radius:8px;background:#000;margin-top:8px"></video>
+      </div>
+      <div id="simbox">
+        <label for="guest">Симуляция: кто подошёл к кассе</label>
+        <select id="guest"></select>
+      </div>
       <label for="hour">Время суток</label>
       <select id="hour">
         <option value="">Сейчас (по часам)</option>
@@ -62,7 +67,7 @@
         <button id="scan">Распознать лицо</button>
         <button class="ghost" id="stranger">Новый гость</button>
       </div>
-      <p class="muted" style="font-size:13px">В прототипе камера заменена симуляцией эмбеддингов; настоящий движок (InsightFace) подключается переменной окружения.</p>
+      <p class="muted" style="font-size:13px">По умолчанию камера заменена симуляцией эмбеддингов. Режим реальной камеры включается переменной SMARTPOS_FACE_ENGINE=insightface. Кадр с камеры не сохраняется: на сервере остаётся только вектор.</p>
     </div>
     <div class="card hidden" id="coldstart">
       <h2>Холодный старт · новый гость</h2>
@@ -138,13 +143,37 @@ async function init() {
   $("menu").onclick = e => { const b = e.target.closest("button"); if (b) add(+b.dataset.id); };
   const cs = await api("/api/customers");
   $("guest").innerHTML = cs.map(c => `<option value="${c.id}">${c.name} (#${c.id})</option>`).join("");
+  if (st.engine === "insightface") startCamera();
 }
 
 function setStatus(text, cls="") { $("status").textContent = text; $("status").className = "status " + cls; }
 
+let cameraMode = false;
+
+async function startCamera() {
+  cameraMode = true;
+  $("simbox").classList.add("hidden"); $("stranger").classList.add("hidden");
+  $("camera").classList.remove("hidden"); $("scan").textContent = "Снять кадр и распознать";
+  try {
+    $("cam").srcObject = await navigator.mediaDevices.getUserMedia({video: {width: 640, height: 480}, audio: false});
+  } catch (e) { setStatus("Нет доступа к камере: " + e.message, "new"); }
+}
+
+async function captureScan() {
+  const v = $("cam");
+  if (!v.videoWidth) throw new Error("Камера ещё не готова");
+  const c = document.createElement("canvas"); c.width = v.videoWidth; c.height = v.videoHeight;
+  c.getContext("2d").drawImage(v, 0, 0);
+  const blob = await new Promise(res => c.toBlob(res, "image/jpeg", 0.92));
+  const fd = new FormData(); fd.append("image", blob, "frame.jpg");
+  const r = await fetch("/api/scan", {method: "POST", body: fd});
+  if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
+  return r.json();
+}
+
 async function doScan(body) {
   cart = {}; render();
-  const r = await post("/api/simulate-scan", body);
+  const r = cameraMode ? await captureScan() : await post("/api/simulate-scan", body);
   if (r.matched) {
     customer = r.customer; scanId = null; $("coldstart").classList.add("hidden");
     setStatus(`Гость распознан · сходство ${r.score}`, "ok"); showProfile();

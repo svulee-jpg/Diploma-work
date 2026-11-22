@@ -6,12 +6,15 @@
 Выбор: переменная окружения SMARTPOS_FACE_ENGINE=simulated|insightface.
 """
 import os
+from pathlib import Path
 
 import faiss
 import numpy as np
 
 DIM = 512
-MATCH_THRESHOLD = 0.60  # косинусное сходство; для реальных лиц калибруется в эксперименте
+# Косинусное сходство. На тестовом снимке (InsightFace buffalo_l) один человек даёт >= 0.93,
+# разные люди <= 0.21, но для реальных условий (свет, ракурс) порог нужно калибровать (FAR/FRR).
+MATCH_THRESHOLD = float(os.environ.get("SMARTPOS_MATCH_THRESHOLD", "0.45"))
 
 
 def _unit(v: np.ndarray) -> np.ndarray:
@@ -70,7 +73,11 @@ class InsightFaceEngine:
     def __init__(self) -> None:
         from insightface.app import FaceAnalysis  # тяжёлый импорт, поэтому ленивый
 
-        self.app = FaceAnalysis(name="buffalo_l", providers=["CPUExecutionProvider"])
+        root = os.environ.get(
+            "SMARTPOS_INSIGHTFACE_ROOT",
+            str(Path(__file__).resolve().parent.parent / "data" / "insightface"),
+        )
+        self.app = FaceAnalysis(name="buffalo_l", root=root, providers=["CPUExecutionProvider"])
         self.app.prepare(ctx_id=-1, det_size=(640, 640))
 
     def embed(self, image_bytes: bytes) -> np.ndarray | None:
