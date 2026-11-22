@@ -113,3 +113,28 @@ def test_tickets_are_sequential_within_a_day(client):
     a = client.post("/api/checkout", json={"items": [{"product_id": 1}]}).json()["ticket"]
     b = client.post("/api/checkout", json={"items": [{"product_id": 1}]}).json()["ticket"]
     assert b == a + 1
+
+
+# ---------- дашборд управляющего ----------
+def test_dashboard_reflects_live_activity(client):
+    before = client.get("/api/dashboard", params={"days": 1}).json()
+    r = client.post("/api/checkout", json={"customer_id": 3, "items": [{"product_id": 5}, {"product_id": 11}],
+                                            "shown": [{"product_id": 11, "probability": 0.6}], "source": "kiosk"}).json()
+    for s in ("preparing", "ready", "done"):
+        client.post(f"/api/orders/{r['order_id']}/status", json={"status": s})
+    after = client.get("/api/dashboard", params={"days": 1}).json()
+    assert after["kpi"]["orders"] == before["kpi"]["orders"] + 1
+    assert after["kpi"]["revenue"] == before["kpi"]["revenue"] + r["gross"]
+    assert after["recs"]["shown"] == before["recs"]["shown"] + 1 and after["recs"]["accepted"] == before["recs"]["accepted"] + 1
+    assert after["ops"]["completed"] == before["ops"]["completed"] + 1 and after["ops"]["avg_wait_min"] is not None
+
+
+def test_dashboard_with_simulated_week_has_sane_numbers(client):
+    from smartpos.simulate_day import simulate
+    simulate(days=3, per_day=25)
+    d = client.get("/api/dashboard", params={"days": 7}).json()
+    assert len(d["by_day"]) == 7 and d["kpi"]["orders"] >= 25 and d["kpi"]["avg_check"] > 0
+    assert 0 <= d["recs"]["rate"] <= 1 and 0 <= d["face"]["rate"] <= 1
+    assert d["ops"]["avg_wait_min"] > 0 and d["ops"]["avg_prep_min"] <= d["ops"]["avg_wait_min"]
+    assert sum(h["orders"] for h in d["by_hour"]) == d["kpi"]["orders"]
+    assert d["insights"] and all(i["level"] in ("ok", "info", "warn", "bad") for i in d["insights"])

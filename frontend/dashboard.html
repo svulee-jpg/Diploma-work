@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Smart POS · дашборд управляющего</title>
+<style>
+  :root { --bg:#e6cdac; --card:#fff8ea; --ink:#1a1411; --mute:#6b5a4b; --brand:#100f0e; --accent:#8a553a; --sand:#b9926c;
+          --soft:#efdcbd; --cream:#f3e3c3; --ok:#2e7d4f; --warn:#c2571a; --bad:#a2261d; --line:#dcc6a3; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:15px/1.45 -apple-system,"Segoe UI",Roboto,sans-serif; color:var(--ink); min-height:100vh;
+         background:var(--bg) url(/static/leopard.jpg) center/cover fixed; }
+  header { position:relative; background:var(--brand); color:var(--cream); padding:12px 24px; display:flex; justify-content:space-between; align-items:center; margin-bottom:22px; flex-wrap:wrap; gap:8px; }
+  header::after { content:""; position:absolute; left:0; right:0; bottom:-12px; height:12px; border-top:2px solid var(--sand); background:var(--bg) url(/static/leopard.jpg) center 30%/cover; }
+  header b { font-size:20px; } header nav a { color:var(--cream); margin-left:14px; text-decoration:none; opacity:.85; } header nav a:hover { opacity:1; text-decoration:underline; }
+  main { max-width:1250px; margin:0 auto; padding:10px 22px 40px; }
+  .bar { display:flex; gap:8px; align-items:center; margin-bottom:14px; flex-wrap:wrap; }
+  .bar .lbl { background:rgba(255,248,234,.92); padding:6px 14px; border-radius:10px; font-weight:600; }
+  .bar button { font:inherit; border:0; border-radius:10px; padding:8px 16px; cursor:pointer; background:rgba(255,248,234,.92); color:var(--ink); }
+  .bar button.on { background:var(--brand); color:var(--cream); }
+  .grid { display:grid; gap:14px; } .kpis { grid-template-columns:repeat(4,1fr); } .two { grid-template-columns:1.4fr 1fr; margin-top:14px; } .three { grid-template-columns:1fr 1fr 1fr; margin-top:14px; }
+  @media (max-width:1000px){ .kpis { grid-template-columns:repeat(2,1fr); } .two,.three { grid-template-columns:1fr; } }
+  .card { background:var(--card); border-radius:16px; padding:16px 18px; box-shadow:0 3px 12px rgba(16,15,14,.22); }
+  .card h3 { margin:0 0 10px; font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--mute); }
+  .kpi .v { font-size:30px; font-weight:800; line-height:1.1; } .kpi .s { color:var(--mute); font-size:13px; margin-top:2px; }
+  .d { display:inline-block; font-size:12px; font-weight:700; border-radius:999px; padding:1px 8px; margin-left:6px; vertical-align:middle; }
+  .d.up { background:#dff0e5; color:var(--ok); } .d.down { background:#f6dcd8; color:var(--bad); } .d.flat { background:var(--soft); color:var(--mute); }
+  .ins { display:flex; gap:10px; padding:10px 12px; border-radius:12px; margin-bottom:8px; background:#fffdf7; border-left:6px solid var(--sand); }
+  .ins.warn { border-left-color:var(--warn); } .ins.bad { border-left-color:var(--bad); } .ins.ok { border-left-color:var(--ok); }
+  svg text { font:11px -apple-system,sans-serif; fill:#6b5a4b; }
+  .hb { display:flex; align-items:center; gap:8px; margin:6px 0; } .hb .n { width:150px; font-size:14px; } .hb .t { flex:1; background:var(--soft); border-radius:6px; height:18px; overflow:hidden; }
+  .hb .t i { display:block; height:100%; background:var(--accent); } .hb .q { width:70px; text-align:right; font-size:13px; color:var(--mute); }
+  table { width:100%; border-collapse:collapse; font-size:14px; } td,th { padding:5px 4px; border-bottom:1px dashed var(--line); text-align:left; } th { color:var(--mute); font-weight:600; font-size:12px; }
+  td.r,th.r { text-align:right; }
+  .note { color:var(--mute); font-size:12px; margin-top:16px; background:rgba(255,248,234,.9); padding:8px 12px; border-radius:10px; }
+</style>
+</head>
+<body>
+<header><b>☕ Дашборд управляющего</b><nav><a href="/queue">Очередь</a><a href="/kiosk" target="_blank">Киоск</a><a href="/barista">Карточка гостя</a></nav></header>
+<main>
+  <div class="bar"><span class="lbl">Период</span>
+    <button data-d="1">Сегодня</button><button data-d="7" class="on">7 дней</button><button data-d="30">30 дней</button><span id="range" style="color:#3a2c20;background:rgba(255,248,234,.85);padding:6px 12px;border-radius:10px"></span></div>
+
+  <div class="grid kpis" id="kpis"></div>
+
+  <div class="card" style="margin-top:14px"><h3>Что делать (рекомендации системы)</h3><div id="ins"></div></div>
+
+  <div class="grid two">
+    <div class="card"><h3>Выручка по дням</h3><div id="chDay"></div></div>
+    <div class="card"><h3>Популярные позиции</h3><div id="top"></div></div>
+  </div>
+  <div class="grid three">
+    <div class="card"><h3>Заказы по часам</h3><div id="chHour"></div></div>
+    <div class="card"><h3>Подсказки ИИ</h3><div id="recs"></div></div>
+    <div class="card"><h3>Риск списаний (выпечка)</h3><div id="waste"></div></div>
+  </div>
+  <div class="note">Данные демонстрационные: чеки сгенерированы, а время приготовления, подсказки и распознавание смоделированы скриптом <code>simulate_day</code>. Реальные показатели появятся после пилота в кофейне.</div>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const money = n => Math.round(n).toLocaleString("ru-RU") + " ₸";
+let days = 7;
+
+function delta(cur, prev, invert) {
+  if (!prev) return "";
+  const p = Math.round((cur - prev) / prev * 100);
+  const good = invert ? p < 0 : p > 0;
+  const cls = p === 0 ? "flat" : good ? "up" : "down";
+  return `<span class="d ${cls}">${p > 0 ? "+" : ""}${p}%</span>`;
+}
+function kpi(title, value, sub, d) { return `<div class="card kpi"><h3>${title}</h3><div class="v">${value}${d || ""}</div><div class="s">${sub}</div></div>`; }
+const pct = x => x == null ? "н/д" : Math.round(x * 100) + "%";
+
+function bars(el, items, ykey, xlabel, fmt) {
+  const W = 620, H = 210, pb = 26, pt = 14, max = Math.max(...items.map(i => i[ykey]), 1), bw = W / items.length;
+  const step = items.length > 16 ? Math.ceil(items.length / 10) : 1;
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="100%">` + items.map((it, k) => {
+    const h = (it[ykey] / max) * (H - pb - pt), x = k * bw + 2;
+    return `<rect x="${x}" y="${H - pb - h}" width="${Math.max(bw - 4, 2)}" height="${h}" rx="3" fill="${it.hi ? "#8a553a" : "#b9926c"}"><title>${xlabel(it)}: ${fmt(it[ykey])}</title></rect>` +
+      (k % step === 0 ? `<text x="${x + (bw - 4) / 2}" y="${H - 8}" text-anchor="middle">${xlabel(it)}</text>` : "");
+  }).join("") + `<text x="0" y="10">макс ${fmt(max)}</text></svg>`;
+}
+
+async function load() {
+  const d = await (await fetch("/api/dashboard?days=" + days)).json();
+  $("range").textContent = `${d.from} — сегодня`;
+  const k = d.kpi, p = d.prev, o = d.ops, r = d.recs;
+  $("kpis").innerHTML =
+    kpi("Выручка", money(k.revenue), "по чекам за период", delta(k.revenue, p.revenue)) +
+    kpi("Заказы", k.orders, `в день ≈ ${(k.orders / d.days).toFixed(1)}`, delta(k.orders, p.orders)) +
+    kpi("Средний чек", money(k.avg_check), `выпечка в ${pct(k.food_attach)} заказов`, delta(k.avg_check, p.avg_check)) +
+    kpi("Узнано по лицу", pct(d.face.rate), `${d.face.scans} подходов, ${d.face.unknown} новых`) +
+    kpi("Принято подсказок ИИ", pct(r.rate), `${r.accepted} из ${r.shown} · ≈ ${money(r.revenue)}`) +
+    kpi("Ожидание заказа", o.avg_wait_min == null ? "н/д" : o.avg_wait_min + " мин", `приготовление ${o.avg_prep_min ?? "н/д"} мин · ≤5 мин: ${pct(o.within_5min)}`) +
+    kpi("Под угрозой списания", money(d.waste.at_risk_value), `${d.waste.items.length} поз. со сроком ≤ 6 ч`) +
+    kpi("Программа лояльности", d.loyalty.customers, `бонусные обязательства: ${money(d.loyalty.bonus_liability)}`);
+
+  $("ins").innerHTML = d.insights.length ? d.insights.map(i => `<div class="ins ${i.level}"><span>${{warn:"⚠️", bad:"🔴", ok:"✅", info:"💡"}[i.level]}</span><span>${i.text}</span></div>`).join("")
+    : '<span style="color:var(--mute)">Пока недостаточно данных для рекомендаций.</span>';
+
+  bars($("chDay"), d.by_day.map((x, i, a) => ({...x, hi: i === a.length - 1})), "revenue", x => x.date.slice(5), money);
+  const hrs = d.by_hour.filter(h => h.hour >= 6 && h.hour <= 22), peak = Math.max(...hrs.map(h => h.orders));
+  bars($("chHour"), hrs.map(h => ({...h, hi: h.orders === peak && peak > 0})), "orders", x => x.hour, v => v + " зак.");
+
+  const tmax = Math.max(...d.top_products.map(t => t.qty), 1);
+  $("top").innerHTML = d.top_products.map(t => `<div class="hb"><span class="n">${t.name}</span><span class="t"><i style="width:${t.qty / tmax * 100}%"></i></span><span class="q">${t.qty} шт</span></div>`).join("") || "Нет данных";
+
+  $("recs").innerHTML = r.shown ? `<table><tr><th>Позиция</th><th class="r">Показано</th><th class="r">Принято</th></tr>` +
+    r.by_product.map(x => `<tr><td>${x.name}</td><td class="r">${x.shown}</td><td class="r">${x.accepted} (${Math.round(x.accepted / x.shown * 100)}%)</td></tr>`).join("") + "</table>" : "Нет данных";
+
+  $("waste").innerHTML = d.waste.items.length ? `<table><tr><th>Позиция</th><th class="r">Остаток</th><th class="r">Срок</th><th class="r">Сумма</th></tr>` +
+    d.waste.items.map(x => `<tr><td>${x.name}</td><td class="r">${x.stock}</td><td class="r">${x.hours_left} ч</td><td class="r">${money(x.value)}</td></tr>`).join("") + "</table>" : '<span style="color:var(--ok)">Рисков списания нет ✔</span>';
+}
+document.querySelectorAll(".bar button").forEach(b => b.onclick = () => {
+  days = +b.dataset.d; document.querySelectorAll(".bar button").forEach(x => x.classList.toggle("on", x === b)); load();
+});
+load(); setInterval(load, 15000);
+</script>
+</body>
+</html>

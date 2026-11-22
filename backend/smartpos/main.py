@@ -94,6 +94,9 @@ def customer_view(con, cid: int) -> dict:
 
 def _identify(vec: np.ndarray, con) -> dict:
     cid, score = S.index.search(vec)
+    con.execute("INSERT INTO scan_log (ts,matched,score) VALUES (?,?,?)",
+                (datetime.now().isoformat(), int(cid is not None), score))
+    con.commit()
     if cid is not None:
         return {"matched": True, "score": round(score, 3), "customer": customer_view(con, cid), "scan_id": None}
     scan_id = secrets.token_hex(8)
@@ -356,6 +359,13 @@ def set_status(oid: int, body: StatusBody):
     return {"id": oid, "status": body.status}
 
 
+@app.get("/api/dashboard")
+def dashboard(days: int = 7):
+    """Сводка для управляющего за последние `days` дней (1 = сегодня)."""
+    from .analytics import dashboard as build
+    return build(connect(), days)
+
+
 @app.get("/api/metrics")
 def metrics():
     """Живая конверсия подсказок: доля принятых рекомендаций (для пилота)."""
@@ -382,6 +392,11 @@ if FRONTEND.exists():
     def queue_page():
         """Экран очереди заказов для бариста."""
         return FileResponse(FRONTEND / "queue.html")
+
+    @app.get("/dashboard")
+    def dashboard_page():
+        """Дашборд управляющего."""
+        return FileResponse(FRONTEND / "dashboard.html")
 
     @app.get("/board")
     def board_page():

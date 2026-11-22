@@ -56,6 +56,12 @@ CREATE TABLE IF NOT EXISTS rec_log (         -- журнал подсказок 
     probability REAL NOT NULL,
     accepted    INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS scan_log (        -- результаты распознавания (без изображений и векторов)
+    id      INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts      TEXT NOT NULL,
+    matched INTEGER NOT NULL,
+    score   REAL NOT NULL
+);
 CREATE INDEX IF NOT EXISTS idx_orders_customer ON orders(customer_id, ts);
 """
 
