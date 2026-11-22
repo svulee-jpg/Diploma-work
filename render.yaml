@@ -1,0 +1,19 @@
+# Blueprint для Render.com: публичная демо-версия (симуляция лиц, вымышленные данные)
+services:
+  - type: web
+    name: smart-pos-demo
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements-demo.txt
+    startCommand: uvicorn smartpos.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/state
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.7
+      - key: SMARTPOS_DEMO
+        value: "1"
+      - key: SMARTPOS_FACE_ENGINE
+        value: simulated
+      - key: SMARTPOS_DEMO_PASSWORD   # задайте пароль в панели Render (Environment), он не хранится в git
+        sync: false

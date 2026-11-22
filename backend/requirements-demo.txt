@@ -1,0 +1,8 @@
+# Лёгкая демо-версия для публикации (без InsightFace/OpenCV): симуляция распознавания лиц
+fastapi
+uvicorn[standard]
+pandas
+numpy
+scikit-learn
+faiss-cpu
+python-multipart

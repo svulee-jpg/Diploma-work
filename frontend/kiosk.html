@@ -300,6 +300,7 @@ $("dStranger").onclick = async () => onScan(await api("/api/simulate-scan", {}))
 
 async function init() {
   const s = await api("/api/state"); st.engine = s.engine;
+  if (s.demo) $("priv").textContent = "🧪 ДЕМО-ВЕРСИЯ: все данные вымышленные. Не вводите реальные имена, телефоны и фото.";
   if (s.engine === "insightface") {
     try {
       $("cam").srcObject = await navigator.mediaDevices.getUserMedia({video:{width:640, height:480}, audio:false});

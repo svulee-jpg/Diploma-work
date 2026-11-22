@@ -1,5 +1,6 @@
 """FastAPI-бэкенд Smart POS: идентификация гостя, карточка, подсказки ИИ, регистрация, оплата."""
 import json
+import os
 import secrets
 from collections import defaultdict
 from contextlib import asynccontextmanager
@@ -7,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 
 import numpy as np
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, Response, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -17,6 +18,7 @@ from .db import DB_PATH, connect
 from .faces import FaceIndex, SimulatedEngine, make_engine
 from .recommender import Order, Recommender, daypart, load_orders
 
+DEMO = os.environ.get("SMARTPOS_DEMO") == "1"   # публичная демо-версия: вымышленные данные, без реальной биометрии
 WELCOME_BONUS = 200
 CASHBACK = 0.05
 FRONTEND = Path(__file__).resolve().parent.parent.parent / "frontend"
@@ -57,11 +59,34 @@ async def lifespan(_: FastAPI):
     if not DB_PATH.exists() or not connect().execute("SELECT 1 FROM customers").fetchone():
         from .synth import generate
         generate()
+        if DEMO:  # публичное демо: сразу наполняем дашборд смоделированной активностью (две недели)
+            from .simulate_day import simulate
+            simulate(days=7, per_day=45)
+            simulate(days=7, per_day=40, seed=12, offset=7)
     _train()
     yield
 
 
 app = FastAPI(title="Smart POS & Loyalty", lifespan=lifespan)
+
+DEMO_PASSWORD = os.environ.get("SMARTPOS_DEMO_PASSWORD")
+if DEMO_PASSWORD:
+    @app.middleware("http")
+    async def demo_password(request, call_next):
+        """Публичное демо закрыто паролем (HTTP Basic): логин любой, пароль из SMARTPOS_DEMO_PASSWORD."""
+        import base64
+        import hmac
+        ok = False
+        header = request.headers.get("authorization", "")
+        if header.startswith("Basic "):
+            try:
+                _user, _, pw = base64.b64decode(header[6:]).decode().partition(":")
+                ok = hmac.compare_digest(pw, DEMO_PASSWORD)
+            except Exception:
+                ok = False
+        if not ok:
+            return Response(status_code=401, headers={"WWW-Authenticate": 'Basic realm="Smart POS demo"'})
+        return await call_next(request)
 
 
 # ---------- вспомогательное ----------
@@ -112,7 +137,7 @@ class SimScan(BaseModel):
 @app.get("/api/state")
 def state():
     con = connect()
-    return {"engine": S.engine.name, "products": list(_products(con).values()),
+    return {"engine": S.engine.name, "demo": DEMO, "products": list(_products(con).values()),
             "welcome_bonus": WELCOME_BONUS, "cashback": CASHBACK}
 
 

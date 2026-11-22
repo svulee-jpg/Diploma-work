@@ -30,6 +30,9 @@
 - `http://localhost:8000/dashboard`: дашборд управляющего (продажи, подсказки ИИ, операции, списания, рекомендации «что делать»).
   Для демо наполните данными: `python -m smartpos.simulate_day --days 7 --per-day 45`.
 
+## Демо по ссылке
+Публикация онлайн (Render, с паролем): [docs/DEPLOY.md](docs/DEPLOY.md).
+
 ## Запуск
 
 ```bash
