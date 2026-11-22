@@ -36,7 +36,12 @@ CREATE TABLE IF NOT EXISTS orders (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     customer_id INTEGER REFERENCES customers(id),
     ts          TEXT NOT NULL,
-    total       INTEGER NOT NULL
+    total       INTEGER NOT NULL,
+    status      TEXT NOT NULL DEFAULT 'done',     -- new | preparing | ready | done (старые чеки = done)
+    source      TEXT NOT NULL DEFAULT 'barista',  -- kiosk | barista
+    started_at  TEXT,
+    ready_at    TEXT,
+    done_at     TEXT
 );
 CREATE TABLE IF NOT EXISTS order_items (
     order_id   INTEGER NOT NULL REFERENCES orders(id),
@@ -60,4 +65,11 @@ def connect() -> sqlite3.Connection:
     con = sqlite3.connect(DB_PATH, check_same_thread=False)
     con.row_factory = sqlite3.Row
     con.executescript(SCHEMA)
+    # миграция для БД, созданных до появления очереди заказов
+    cols = {r["name"] for r in con.execute("PRAGMA table_info(orders)")}
+    for name, ddl in [("status", "TEXT NOT NULL DEFAULT 'done'"), ("source", "TEXT NOT NULL DEFAULT 'barista'"),
+                      ("started_at", "TEXT"), ("ready_at", "TEXT"), ("done_at", "TEXT")]:
+        if name not in cols:
+            con.execute(f"ALTER TABLE orders ADD COLUMN {name} {ddl}")
+    con.commit()
     return con

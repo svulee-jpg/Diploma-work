@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Smart POS · очередь заказов</title>
+<style>
+  :root { --bg:#e6cdac; --card:#fff8ea; --ink:#1a1411; --mute:#6b5a4b; --brand:#100f0e; --accent:#8a553a; --sand:#b9926c;
+          --soft:#efdcbd; --cream:#f3e3c3; --ok:#2e7d4f; --warn:#c2571a; --bad:#a2261d; --line:#dcc6a3; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:16px/1.4 -apple-system,"Segoe UI",Roboto,sans-serif; color:var(--ink); min-height:100vh;
+         background:var(--bg) url(/static/leopard.jpg) center/cover fixed; }
+  header { position:relative; background:var(--brand); color:var(--cream); padding:12px 24px; display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; }
+  header::after { content:""; position:absolute; left:0; right:0; bottom:-12px; height:12px; border-top:2px solid var(--sand); background:var(--bg) url(/static/leopard.jpg) center 30%/cover; }
+  header b { font-size:20px; } header nav a { color:var(--cream); margin-left:16px; text-decoration:none; opacity:.85; } header nav a:hover { opacity:1; text-decoration:underline; }
+  main { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; padding:10px 22px 30px; }
+  @media (max-width:900px){ main { grid-template-columns:1fr; } }
+  .col h2 { margin:0 0 10px; display:inline-flex; gap:10px; align-items:center; background:var(--brand); color:var(--cream); padding:6px 16px; border-radius:12px; font-size:17px; }
+  .col h2 span { background:var(--sand); color:var(--brand); border-radius:999px; padding:0 10px; }
+  .card { background:var(--card); border-radius:16px; padding:14px 16px; margin-bottom:12px; border-left:8px solid var(--sand); box-shadow:0 3px 10px rgba(16,15,14,.22); }
+  .card.late { border-left-color:var(--bad); } .card.warn { border-left-color:var(--warn); } .card.ready { border-left-color:var(--ok); }
+  .top { display:flex; justify-content:space-between; align-items:baseline; }
+  .num { font-size:34px; font-weight:800; line-height:1; } .wait { font-size:14px; color:var(--mute); } .late .wait { color:var(--bad); font-weight:700; }
+  .src { display:inline-block; font-size:12px; border-radius:999px; padding:1px 9px; background:var(--soft); margin-left:8px; vertical-align:middle; }
+  .src.kiosk { background:var(--brand); color:var(--cream); }
+  .who { margin:6px 0 2px; font-weight:600; } .prefs span { display:inline-block; background:#fbefd7; border:1px solid var(--sand); border-radius:999px; padding:0 10px; font-size:13px; margin:2px 4px 2px 0; color:var(--accent); font-weight:600; }
+  ul { margin:8px 0 10px; padding-left:20px; } li { font-size:18px; }
+  button { font:inherit; border:0; border-radius:12px; padding:10px 18px; cursor:pointer; background:var(--brand); color:var(--cream); width:100%; font-size:17px; }
+  button:hover { background:var(--accent); } button.go { background:var(--ok); }
+  .empty { color:var(--mute); background:rgba(255,248,234,.85); border-radius:12px; padding:10px 14px; }
+</style>
+</head>
+<body>
+<header><b>☕ Очередь заказов</b><nav><a href="/barista">Карточка гостя</a><a href="/board" target="_blank">Табло выдачи</a><a href="/kiosk" target="_blank">Киоск</a></nav></header>
+<main>
+  <section class="col"><h2>Новые <span id="n1">0</span></h2><div id="c1"></div></section>
+  <section class="col"><h2>Готовятся <span id="n2">0</span></h2><div id="c2"></div></section>
+  <section class="col"><h2>Готовы к выдаче <span id="n3">0</span></h2><div id="c3"></div></section>
+</main>
+<script>
+const money = n => n.toLocaleString("ru-RU") + " ₸";
+const NEXT = {new:["preparing","▶ Начать готовить"], preparing:["ready","✔ Готово"], ready:["done","Выдан гостю"]};
+let known = null;
+
+function card(o) {
+  const [next, label] = NEXT[o.status];
+  const cls = o.status === "ready" ? "ready" : o.waiting_min >= 8 ? "late" : o.waiting_min >= 4 ? "warn" : "";
+  return `<div class="card ${cls}">
+    <div class="top"><div><span class="num">№${o.ticket}</span><span class="src ${o.source}">${o.source === "kiosk" ? "киоск" : "касса"}</span></div>
+      <span class="wait">${o.waiting_min < 1 ? "только что" : Math.floor(o.waiting_min) + " мин"}</span></div>
+    ${o.customer ? `<div class="who">${o.customer}</div>` : ""}
+    ${o.prefs.length ? `<div class="prefs">${o.prefs.map(p => `<span>${p}</span>`).join("")}</div>` : ""}
+    <ul>${o.items.map(i => `<li>${i.name}${i.qty > 1 ? " × " + i.qty : ""}</li>`).join("")}</ul>
+    <button class="${o.status === "ready" ? "" : "go"}" onclick="move(${o.id},'${next}')">${label}</button></div>`;
+}
+async function move(id, status) {
+  await fetch(`/api/orders/${id}/status`, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({status})});
+  load();
+}
+function beep() { try { const a = new AudioContext(), o = a.createOscillator(); o.connect(a.destination); o.frequency.value = 880; o.start(); o.stop(a.currentTime + 0.15); } catch (e) {} }
+async function load() {
+  const orders = await (await fetch("/api/queue")).json();
+  const ids = new Set(orders.filter(o => o.status === "new").map(o => o.id));
+  if (known && [...ids].some(i => !known.has(i))) beep();   // звук о новом заказе
+  known = ids;
+  [["new", 1], ["preparing", 2], ["ready", 3]].forEach(([s, i]) => {
+    const list = orders.filter(o => o.status === s);
+    document.getElementById("n" + i).textContent = list.length;
+    document.getElementById("c" + i).innerHTML = list.map(card).join("") || '<div class="empty">Пусто</div>';
+  });
+}
+load(); setInterval(load, 3000);
+</script>
+</body>
+</html>

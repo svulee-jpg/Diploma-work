@@ -1,6 +1,7 @@
 """FastAPI-бэкенд Smart POS: идентификация гостя, карточка, подсказки ИИ, регистрация, оплата."""
 import json
 import secrets
+from collections import defaultdict
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
@@ -257,6 +258,7 @@ class Checkout(BaseModel):
     items: list[Item]
     redeem: int = 0
     shown: list[ShownRec] = []
+    source: str = "barista"      # kiosk | barista
     apply_promos: bool = False   # киоск: цены с акциями (серверный пересчёт, клиенту не доверяем)
     date: str | None = None
     hour: int | None = None
@@ -280,7 +282,8 @@ def checkout(body: Checkout):
     pay = gross - redeem
     earned = int(pay * CASHBACK) if body.customer_id else 0
     now = datetime.now().isoformat()
-    cur = con.execute("INSERT INTO orders (customer_id,ts,total) VALUES (?,?,?)", (body.customer_id, now, gross))
+    cur = con.execute("INSERT INTO orders (customer_id,ts,total,status,source) VALUES (?,?,?,'new',?)",
+                      (body.customer_id, now, gross, body.source))
     for it in body.items:
         con.execute("INSERT INTO order_items VALUES (?,?,?)", (cur.lastrowid, it.product_id, it.qty))
         con.execute("UPDATE products SET stock = MAX(stock-?,0) WHERE id=? AND category='food'", (it.qty, it.product_id))
@@ -291,8 +294,66 @@ def checkout(body: Checkout):
     if body.customer_id:
         con.execute("UPDATE customers SET bonus = bonus - ? + ? WHERE id=?", (redeem, earned, body.customer_id))
     con.commit()
-    return {"order_id": cur.lastrowid, "gross": gross, "redeemed": redeem, "to_pay": pay, "earned": earned,
+    return {"order_id": cur.lastrowid, "ticket": _ticket(con, cur.lastrowid, now), "gross": gross, "redeemed": redeem, "to_pay": pay, "earned": earned,
             "customer": customer_view(con, body.customer_id) if body.customer_id else None}
+
+
+# ---------- очередь заказов ----------
+def _ticket(con, order_id: int, ts: str) -> int:
+    """Номер заказа на сегодня (1, 2, 3...): его гость видит на табло."""
+    return con.execute("SELECT COUNT(*) FROM orders WHERE substr(ts,1,10)=? AND id<=?", (ts[:10], order_id)).fetchone()[0]
+
+
+def _active_orders(con) -> list[dict]:
+    rows = con.execute(
+        "SELECT o.id, o.ts, o.total, o.status, o.source, o.customer_id, c.name AS cname, c.prefs "
+        "FROM orders o LEFT JOIN customers c ON c.id=o.customer_id "
+        "WHERE o.status IN ('new','preparing','ready') ORDER BY o.ts").fetchall()
+    items = defaultdict(list)
+    for r in con.execute("SELECT oi.order_id, p.name, oi.qty FROM order_items oi JOIN products p ON p.id=oi.product_id "
+                         "WHERE oi.order_id IN (SELECT id FROM orders WHERE status IN ('new','preparing','ready'))"):
+        items[r["order_id"]].append({"name": r["name"], "qty": r["qty"]})
+    now = datetime.now()
+    return [{"id": r["id"], "ticket": _ticket(con, r["id"], r["ts"]), "status": r["status"], "source": r["source"],
+             "customer": r["cname"], "prefs": json.loads(r["prefs"]) if r["prefs"] else [], "items": items[r["id"]],
+             "total": r["total"], "ts": r["ts"],
+             "waiting_min": round((now - datetime.fromisoformat(r["ts"])).total_seconds() / 60, 1)} for r in rows]
+
+
+@app.get("/api/queue")
+def queue():
+    """Для экрана бариста: активные заказы с именем гостя и его предпочтениями."""
+    return _active_orders(connect())
+
+
+@app.get("/api/board")
+def board():
+    """Для публичного табло: только номера и статусы, без персональных данных."""
+    orders = _active_orders(connect())
+    return {"preparing": [o["ticket"] for o in orders if o["status"] in ("new", "preparing")],
+            "ready": [o["ticket"] for o in orders if o["status"] == "ready"]}
+
+
+class StatusBody(BaseModel):
+    status: str
+
+
+NEXT_STATUS = {"new": "preparing", "preparing": "ready", "ready": "done"}
+STATUS_TS = {"preparing": "started_at", "ready": "ready_at", "done": "done_at"}
+
+
+@app.post("/api/orders/{oid}/status")
+def set_status(oid: int, body: StatusBody):
+    con = connect()
+    row = con.execute("SELECT status FROM orders WHERE id=?", (oid,)).fetchone()
+    if not row:
+        raise HTTPException(404, "Заказ не найден")
+    if NEXT_STATUS.get(row["status"]) != body.status:
+        raise HTTPException(409, f"Нельзя перевести заказ из «{row['status']}» в «{body.status}»")
+    con.execute(f"UPDATE orders SET status=?, {STATUS_TS[body.status]}=? WHERE id=?",
+                (body.status, datetime.now().isoformat(), oid))
+    con.commit()
+    return {"id": oid, "status": body.status}
 
 
 @app.get("/api/metrics")
@@ -314,5 +375,15 @@ if FRONTEND.exists():
 
     @app.get("/barista")
     def barista():
-        """Экран для персонала."""
+        """Экран для персонала: карточка гостя и подсказки."""
         return FileResponse(FRONTEND / "index.html")
+
+    @app.get("/queue")
+    def queue_page():
+        """Экран очереди заказов для бариста."""
+        return FileResponse(FRONTEND / "queue.html")
+
+    @app.get("/board")
+    def board_page():
+        """Табло выдачи заказов для гостей."""
+        return FileResponse(FRONTEND / "board.html")

@@ -247,9 +247,10 @@ async function doPay(method) {
   await new Promise(r => setTimeout(r, 2200));
   try {
     const items = Object.entries(st.cart).map(([id, qty]) => ({product_id: +id, qty}));
-    const r = await api("/api/checkout", {customer_id: st.customer?.id ?? null, items, redeem, shown: st.shown, apply_promos: true, ...demo()});
-    modal(`<h2 class="ok">✔ Оплачено</h2><p style="font-size:22px;color:var(--ink)">Заказ №${r.order_id}${st.customer ? ", " + st.customer.name : ""}</p>
-      <p>Бариста уже готовит. Сумма: ${money(r.to_pay)}${r.customer ? `<br>Начислено бонусов: ${r.earned} · баланс ${r.customer.bonus}` : ""}</p>
+    const r = await api("/api/checkout", {customer_id: st.customer?.id ?? null, items, redeem, shown: st.shown, apply_promos: true, source: "kiosk", ...demo()});
+    modal(`<h2 class="ok">✔ Оплачено</h2><p style="margin:0">Ваш номер заказа</p>
+      <div style="font-size:84px;font-weight:800;line-height:1.1">${r.ticket}</div>
+      <p style="font-size:18px;color:var(--ink)">${st.customer ? st.customer.name + ", с" : "С"}ледите за номером на табло. Сумма: ${money(r.to_pay)}${r.customer ? `<br>Начислено бонусов: ${r.earned} · баланс ${r.customer.bonus}` : ""}</p>
       <div class="btns"><button class="big" id="fin">Готово</button></div>`);
     $("fin").onclick = reset; setTimeout(() => { if (st.screen === "main") reset(); }, 10000);
   } catch (e) { modal(`<h2>Ошибка оплаты</h2><p>${e.message}</p><div class="btns"><button class="big" onclick="closeModal()">Закрыть</button></div>`); }

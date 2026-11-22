@@ -89,3 +89,27 @@ def test_promo_checkout_is_priced_on_server(client):
     r = client.post("/api/checkout", json={"customer_id": None, "items": [{"product_id": 3}], "apply_promos": True,
                                             "date": "2026-10-10", "hour": 9}).json()
     assert r["gross"] == 1190
+
+
+# ---------- очередь заказов ----------
+def test_order_goes_through_queue_statuses(client):
+    r = client.post("/api/checkout", json={"customer_id": 2, "items": [{"product_id": 4}, {"product_id": 14}],
+                                            "source": "kiosk"}).json()
+    oid, ticket = r["order_id"], r["ticket"]
+    mine = next(o for o in client.get("/api/queue").json() if o["id"] == oid)
+    assert mine["status"] == "new" and mine["source"] == "kiosk" and mine["customer"] == "Айгерим"
+    assert {i["name"] for i in mine["items"]} == {"Латте", "Печенье"}
+    assert client.post(f"/api/orders/{oid}/status", json={"status": "ready"}).status_code == 409  # нельзя перепрыгнуть
+    for s in ("preparing", "ready"):
+        assert client.post(f"/api/orders/{oid}/status", json={"status": s}).status_code == 200
+    board = client.get("/api/board").json()
+    assert ticket in board["ready"] and ticket not in board["preparing"]
+    assert "Айгерим" not in str(board)                       # на публичном табло нет персональных данных
+    client.post(f"/api/orders/{oid}/status", json={"status": "done"})
+    assert all(o["id"] != oid for o in client.get("/api/queue").json())
+
+
+def test_tickets_are_sequential_within_a_day(client):
+    a = client.post("/api/checkout", json={"items": [{"product_id": 1}]}).json()["ticket"]
+    b = client.post("/api/checkout", json={"items": [{"product_id": 1}]}).json()["ticket"]
+    assert b == a + 1

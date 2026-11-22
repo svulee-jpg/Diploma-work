@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Табло выдачи</title>
+<style>
+  :root { --bg:#e6cdac; --brand:#100f0e; --cream:#f3e3c3; --sand:#b9926c; --ok:#2e7d4f; }
+  * { box-sizing:border-box; }
+  body { margin:0; min-height:100vh; font:20px/1.3 -apple-system,"Segoe UI",Roboto,sans-serif; color:#1a1411;
+         background:var(--bg) url(/static/leopard.jpg) center/cover fixed; }
+  header { position:relative; background:var(--brand); color:var(--cream); padding:14px 30px; font-size:26px; font-weight:700; margin-bottom:26px; }
+  header::after { content:""; position:absolute; left:0; right:0; bottom:-12px; height:12px; border-top:2px solid var(--sand); background:var(--bg) url(/static/leopard.jpg) center 30%/cover; }
+  main { display:grid; grid-template-columns:1fr 1fr; gap:22px; padding:14px 30px; }
+  section { background:rgba(255,248,234,.94); border-radius:24px; padding:22px 26px; min-height:60vh; box-shadow:0 6px 22px rgba(16,15,14,.3); }
+  h2 { margin:0 0 16px; font-size:30px; } .ready h2 { color:var(--ok); }
+  .nums { display:flex; flex-wrap:wrap; gap:14px; }
+  .n { font-size:64px; font-weight:800; min-width:110px; text-align:center; border-radius:18px; padding:4px 18px; background:var(--brand); color:var(--cream); }
+  .ready .n { background:var(--ok); color:#fff; animation:blink 1.4s infinite; }
+  @keyframes blink { 50% { transform:scale(1.06); } }
+  .none { color:#6b5a4b; font-size:22px; }
+</style>
+</head>
+<body>
+<header>☕ ESPRESSO DAY · Выдача заказов</header>
+<main>
+  <section><h2>Готовятся</h2><div class="nums" id="prep"></div></section>
+  <section class="ready"><h2>Готовы: заберите у стойки</h2><div class="nums" id="ready"></div></section>
+</main>
+<script>
+const fill = (id, arr) => document.getElementById(id).innerHTML = arr.length ? arr.map(n => `<div class="n">${n}</div>`).join("") : '<div class="none">Пока нет</div>';
+async function load() { const b = await (await fetch("/api/board")).json(); fill("prep", b.preparing); fill("ready", b.ready); }
+load(); setInterval(load, 2500);
+</script>
+</body>
+</html>
