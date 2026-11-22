@@ -76,6 +76,8 @@ if DEMO_PASSWORD:
         """Публичное демо закрыто паролем (HTTP Basic): логин любой, пароль из SMARTPOS_DEMO_PASSWORD."""
         import base64
         import hmac
+        if request.url.path == "/healthz":   # проверка живости для хостинга: данных не отдаёт, пароль не нужен
+            return await call_next(request)
         ok = False
         header = request.headers.get("authorization", "")
         if header.startswith("Basic "):
@@ -130,6 +132,11 @@ def _identify(vec: np.ndarray, con) -> dict:
 
 
 # ---------- API ----------
+@app.get("/healthz")
+def healthz():
+    return {"ok": True}
+
+
 class SimScan(BaseModel):
     customer_id: int | None = None
 
