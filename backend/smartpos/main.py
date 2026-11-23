@@ -13,6 +13,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from . import collect
 from . import context as ctxmod
 from .db import DB_PATH, connect
 from .faces import FaceIndex, SimulatedEngine, make_engine
@@ -32,6 +33,7 @@ class State:
 
 
 S = State()
+collect.engine_provider = lambda: S.engine
 
 
 def _ensure_seasonal_products() -> None:
@@ -132,6 +134,9 @@ def _identify(vec: np.ndarray, con) -> dict:
 
 
 # ---------- API ----------
+app.include_router(collect.router)
+
+
 @app.get("/healthz")
 def healthz():
     return {"ok": True}
@@ -429,6 +434,13 @@ if FRONTEND.exists():
     def dashboard_page():
         """Дашборд управляющего."""
         return FileResponse(FRONTEND / "dashboard.html")
+
+    @app.get("/collect")
+    def collect_page():
+        """Съёмка добровольцев для оценки FAR/FRR (только локально, SMARTPOS_COLLECT=1)."""
+        if not collect.enabled():
+            raise HTTPException(404, "Сбор снимков выключен")
+        return FileResponse(FRONTEND / "collect.html")
 
     @app.get("/board")
     def board_page():
