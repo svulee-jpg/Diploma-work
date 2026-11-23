@@ -95,8 +95,15 @@ $("start").onclick = async () => {
     pickNext(); render();
     $("msg").textContent = faceCheck ? "" : "Проверка «лицо найдено» недоступна: запустите с SMARTPOS_FACE_ENGINE=insightface";
     $("msg").className = "msg warn";
-  } catch (e) { $("setupMsg").textContent = e.message; $("setupMsg").className = "msg bad"; }
+  } catch (e) { $("setupMsg").textContent = camError(e); $("setupMsg").className = "msg bad"; }
 };
+function camError(e) {
+  const n = e && e.name;
+  if (n === "NotAllowedError" || n === "SecurityError") return "Нет доступа к камере. Разрешите камеру для этого сайта (значок замка в адресной строке) и откройте страницу в Chrome или Safari, а не во встроенном окне.";
+  if (n === "NotFoundError" || n === "OverconstrainedError") return "Камера не найдена. Подключите веб-камеру и обновите страницу.";
+  if (n === "NotReadableError") return "Камера занята другой программой (Zoom, Teams, FaceTime). Закройте её и попробуйте снова.";
+  return (e && e.message) || "Не удалось включить камеру";
+}
 $("other").onclick = () => { $("shoot").classList.add("hidden"); $("setup").classList.remove("hidden"); $("code").value = ""; $("consent").checked = false; $("start").disabled = true; };
 
 async function snap() {
