@@ -9,6 +9,8 @@ python-multipart
 # Реальное распознавание лиц (опционально, SMARTPOS_FACE_ENGINE=insightface):
 insightface
 onnxruntime
+# Графики оценки (FAR/FRR), опционально
+matplotlib
 # Тесты
 pytest
 httpx
